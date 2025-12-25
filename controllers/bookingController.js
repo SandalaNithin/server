@@ -31,52 +31,54 @@ const createBooking = async (req, res) => {
 
         const userIP = req.ip;
 
-        // 2. IP BLOCK (Limit 1 booking per 24 hours) - Disabled in Test
-        if (process.env.NODE_ENV !== "test") {
-            const lastBooking = await Booking.findOne({
-                ip: userIP,
-                createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-            });
-
-            if (lastBooking) {
-                return res.status(429).json({
-                    success: false,
-                    message: "You have already submitted a booking in the last 24 hours.",
-                });
-            }
-        }
-
-        // 3. CHECK TIME SLOT CONFLICT
-        const slotTaken = await Booking.findOne({
-            fromDate,
-            toDate,
-            $or: [
-                { checkIn: { $lte: checkIn }, checkOut: { $gt: checkIn } },
-                { checkIn: { $lt: checkOut }, checkOut: { $gte: checkOut } },
-                { checkIn: { $gte: checkIn }, checkOut: { $lte: checkOut } },
-            ],
+        // 2. EMAIL-BASED 24-HOUR RESTRICTION (Limit 1 booking per email every 24 hours)
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentBooking = await Booking.findOne({
+            email: email.toLowerCase(),
+            createdAt: { $gte: twentyFourHoursAgo },
         });
 
-        if (slotTaken) {
+        if (recentBooking) {
+            return res.status(429).json({
+                success: false,
+                message: "You can submit only once every 24 hours.",
+            });
+        }
+
+        // 3. DATE RANGE OVERLAP VALIDATION
+        // Convert date strings to Date objects for proper comparison
+        const requestedFromDate = new Date(fromDate);
+        const requestedToDate = new Date(toDate);
+
+        // Check if requested date range overlaps with any confirmed booking
+        // Overlap logic: requested_from_date <= existing_to_date AND requested_to_date >= existing_from_date
+        const overlappingBooking = await Booking.findOne({
+            status: "confirmed",
+            fromDate: { $lte: requestedToDate },
+            toDate: { $gte: requestedFromDate },
+        });
+
+        if (overlappingBooking) {
             return res.status(409).json({
                 success: false,
-                message: "This time slot is already booked. Please choose another time.",
+                message: "These dates are already booked. Please choose different dates.",
             });
         }
 
         // 4. SAVE TO DB
         const booking = await Booking.create({
             name,
-            email,
+            email: email.toLowerCase(),
             phone,
             eventType,
             guests,
-            fromDate,
-            toDate,
+            fromDate: requestedFromDate,
+            toDate: requestedToDate,
             checkIn,
             checkOut,
             message,
             ip: userIP,
+            status: "confirmed",
         });
 
         console.log("✅ SAVED TO DB:", booking._id);
@@ -115,4 +117,33 @@ const createBooking = async (req, res) => {
     }
 };
 
-module.exports = { createBooking };
+// @desc    Get all blocked dates (confirmed bookings)
+// @route   GET /api/booking/blocked-dates
+// @access  Public
+const getBlockedDates = async (req, res) => {
+    try {
+        // Fetch all confirmed bookings
+        const confirmedBookings = await Booking.find(
+            { status: "confirmed" },
+            { fromDate: 1, toDate: 1, _id: 0 }
+        ).sort({ fromDate: 1 });
+
+        // Format dates as ISO strings for frontend
+        const blockedRanges = confirmedBookings.map(booking => ({
+            fromDate: booking.fromDate.toISOString().split('T')[0],
+            toDate: booking.toDate.toISOString().split('T')[0],
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: blockedRanges,
+        });
+
+    } catch (error) {
+        console.error("❌ ERROR FETCHING BLOCKED DATES:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch blocked dates" });
+    }
+};
+
+module.exports = { createBooking, getBlockedDates };
+

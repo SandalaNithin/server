@@ -11,6 +11,14 @@ const bookingSchema = z.object({
     checkIn: z.string().min(1, "Check-in time is required"),
     checkOut: z.string().min(1, "Check-out time is required"),
     message: z.string().optional(),
-});
+}).refine(
+    (data) => {
+        const from = new Date(data.fromDate);
+        const to = new Date(data.toDate);
+        return to >= from;
+    },
+    { message: "To date cannot be before from date", path: ["toDate"] }
+);
 
 module.exports = bookingSchema;
+

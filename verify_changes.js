@@ -16,14 +16,14 @@ const bookingData = {
 };
 
 (async () => {
-  console.log("🚀 Running Verification Test...");
+  console.log("Running Verification Test...");
 
   try {
     const res = await axios.post(BASE_URL, bookingData);
-    console.log("✅ RESPONSE:", res.data);
+    console.log("✅RESPONSE:", res.data);
   } catch (err) {
     console.error(
-      "❌ ERROR:",
+      "❌ERROR:",
       err.response ? err.response.data : err.message
     );
   }
