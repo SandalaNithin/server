@@ -6,4 +6,3 @@ const API = axios.create({
 
 export const sendBooking = (data) => API.post("/api/booking", data);
 export const getBlockedDates = () => API.get("/api/booking/blocked-dates");
-
